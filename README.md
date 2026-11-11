@@ -4,6 +4,9 @@ A modular-style patching view for the EaganMatrix in the Expressive E Osmose. Mo
 boxes, matrix connections are cables, and every edit is sent to the Osmose as you make it,
 so the current sound changes in real time.
 
+<img width="850" height="295" alt="opa-screenshot" src="https://github.com/user-attachments/assets/b9b4acbc-56e6-45e3-919a-7f0116b7c3df" />
+
+
 ## Download
 
 Visit the `dist` folder and download `osmose-patcher.html`.  
