@@ -4,14 +4,21 @@ A modular-style patching view for the EaganMatrix in the Expressive E Osmose. Mo
 boxes, matrix connections are cables, and every edit is sent to the Osmose as you make it,
 so the current sound changes in real time.
 
+## Download
+
+https://github.com/msintros/Osmose-Patch-Assistant/blob/main/dist/osmose-patcher.html
+
+
 ## Run it
 
-1. Connect the Osmose by USB. Quit the Haken Editor if it is open.
+1. Quit the Haken Editor if it is open.
 2. Open `osmose-patcher.html` in **Chrome or Edge** (Safari has no Web MIDI). Allow MIDI
    access when the browser asks.
-3. The In and Out menus should already show the Osmose's port 2. Press **Connect**.
-4. The app asks the Osmose for its current patch. If cables do not appear, press
+3. The In and Out menus should already show "Omsmose 61 haken," but if not, select this port for both.
+4. Press **Connect**.
+5. The app asks the Osmose for its current patch. If cables do not appear, press
    **Read patch**, or change presets on the Osmose and back.
+6. Alternatively, just click **Open** and select a patch you have saved using this patcher and then **Send all to Osmose**.  
 
 Without an Osmose you can still try the interface with **Demo patch**, or open a Haken
 preset `.mid` file with **Open…**.
@@ -88,16 +95,6 @@ preset `.mid` file with **Open…**.
   until you press Read patch.
 - **Save…** keeps the patch as a `.json` file. To keep a sound on the Osmose, use the
   Osmose's own Save.
-
-## First test on the Osmose: please send a capture
-
-Some of the Osmose's message format is inferred, not yet tested (see
-[docs/PROTOCOL.md](docs/PROTOCOL.md)). The quickest way to settle it:
-
-1. Connect, press Read patch, then select one or two presets on the Osmose.
-2. Make one connection and move one formula slider. Listen for a change.
-3. Press **Save capture** in the MIDI log and send the file back, with a note on what you
-   heard. If nothing changed, try switching **Protocol** in the toolbar and repeat.
 
 ## Files
 
