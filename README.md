@@ -6,8 +6,7 @@ so the current sound changes in real time.
 
 ## Download
 
-https://github.com/msintros/Osmose-Patch-Assistant/blob/main/dist/osmose-patcher.html
-
+Visit the dist/ folder and download `osmose-patcher.html`.  
 
 ## Run it
 
