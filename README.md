@@ -6,7 +6,7 @@ so the current sound changes in real time.
 
 ## Download
 
-Visit the dist/ folder and download `osmose-patcher.html`.  
+Visit the `dist` folder and download `osmose-patcher.html`.  
 
 ## Run it
 
