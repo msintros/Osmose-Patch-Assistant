@@ -1,0 +1,2 @@
+Live captures from an EaganMatrix Module, from github.com/werebyte/eagan_mcp (MIT, Copyright (c) 2026 Karol Celinski).
+legacy-1009-hz-darkness.mid (not included): "HZ Darkness v1" by C. Duquesne, from the Haken Editor 10.52 download (HE/Explorations), firmware 10.09 archive. Put a copy here to run the tests that use it.

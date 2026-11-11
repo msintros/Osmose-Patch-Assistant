@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Osmose Patcher</title>
+<style>/*STYLE*/</style>
+</head>
+<body>
+<header>
+  <h1>Osmose Patcher</h1>
+  <div class="group">
+    <span id="dot" class="dot"></span>
+    <label>In <select id="inSel"></select></label>
+    <label>Out <select id="outSel"></select></label>
+    <button id="connectBtn" class="primary">Connect</button>
+    <button id="readBtn" title="Ask the Osmose to send its current patch">Read patch</button>
+    <label title="Send the Editor's once-a-second 'editor present' ping"><input type="checkbox" id="hbChk" checked> Heartbeat</label>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <label title="Which message format to speak. Auto picks from the firmware version the device reports.">Protocol
+      <select id="dialectSel">
+        <option value="auto">Auto</option>
+        <option value="legacy">Legacy (Osmose, fw 10.09)</option>
+        <option value="modern">Modern (fw 10.3x+)</option>
+      </select></label>
+  </div>
+  <div class="sep"></div>
+  <div class="group">
+    <button id="paletteBtn" title="Show or hide the module list on the left (right-clicking the canvas also adds modules)">Module list</button>
+    <button id="openBtn" title="Open a saved patch (.json) or a Haken preset file (.mid)">Open…</button>
+    <input type="file" id="fileIn" accept=".json,.mid" hidden>
+    <button id="saveBtn">Save…</button>
+    <button id="pushBtn" title="Send the whole patch shown here to the Osmose">Send all to Osmose</button>
+    <button id="demoBtn">Demo patch</button>
+    <button id="newBtn">Clear</button>
+    <button id="layoutBtn" title="Reset module positions and zoom">Reset layout</button>
+    <button id="themeBtn" title="Light / dark">◐</button>
+  </div>
+  <span id="status"></span>
+</header>
+<main>
+  <aside id="palette"></aside>
+  <div id="canvasWrap">
+    <svg id="canvas"></svg>
+    <div id="presetName"></div>
+    <div id="hint"><span id="devinfo"></span></div>
+  </div>
+  <aside id="inspector"></aside>
+</main>
+<section id="log">
+  <div id="logBar">
+    <button id="logToggle">MIDI log</button>
+    <span class="grow">Every message in and out. If something does not work on your Osmose, press “Save capture” and send the file.</span>
+    <label><input type="checkbox" id="logFilter" checked> Hide notes</label>
+    <button id="logPause">Pause</button>
+    <button id="logClear">Clear</button>
+    <button id="logSave">Save capture</button>
+  </div>
+  <div id="logBody"></div>
+</section>
+<script>/*PROTOCOL*/</script>
+<script>/*MODS*/</script>
+<script>/*MODULES*/</script>
+<script>/*APP*/</script>
+</body>
+</html>
