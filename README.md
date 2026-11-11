@@ -1,4 +1,4 @@
-# Osmose Patcher (prototype)
+# Osmose Patch Assistant (prototype)
 
 A modular-style patching view for the EaganMatrix in the Expressive E Osmose. Modules are
 boxes, matrix connections are cables, and every edit is sent to the Osmose as you make it,
