@@ -1088,7 +1088,24 @@ main.nopal #palette { display: none; }
   const CONV_IRS = ['Waterphone 1', 'Waterphone 2', 'Autoharp 1', 'Autoharp 2', 'Guitar dark', 'Finger snap', 'Wood', 'Metal bright', 'Fiber', 'Leather',
     'Metal damped', 'Nylon', 'Cloth', 'Eowave gong', 'LVDL pyramid', 'LVDL gong', 'LVDL onde', 'White', 'Grey'];
 
-  root.EMMods = { GESTURES, defaults, fresh, macroOf, macroFormula, macroNames, RECIRC_TYPES, RECIRC_DESC, RECIRC_CC, MASTER_KNOBS, CONV_IRS };
+  // What a new patch starts with in the Master section, sent to the Osmose with the patch so the screen and the
+  // instrument agree from the start. Global FX (recirculator) and convolution start OFF, with values ready for
+  // when they are switched on. Values are taken from factory-style presets (Bowed BiqBank).
+  const MASTER_DEFAULTS = {
+    setup: { 15: 1, 16: 0, 62: 0 },   // 15: recirculator disabled; 16: compressor (not tanh); 62: Short reverb
+    globals: {
+      26: 64, 18: 60, 19: 0,                         // Pre, Post, Audio in
+      20: 99, 21: 53, 22: 17, 23: 40, 95: 40, 96: 40, // R1..R6 (Short reverb: diffuse, damping, darkness, decay, pre-delay, high pass)
+      24: 50,                                        // Recirc mix, used once Global FX is switched on
+      83: 64, 84: 64, 85: 0,                         // Tilt EQ flat, EQ mix 0
+      90: 127, 91: 64, 92: 64, 93: 0,                // Compressor, mix 0 (off)
+    },
+    // Convolution (stream 14): both Mix values 0 = off. Responses Metal bright, Guitar dark, Waterphone 2, Wood,
+    // full length, tune unchanged (64), width 64, levels full, equal power off.
+    conv: [0, 0, 0, 0, 7, 4, 1, 6, 127, 127, 127, 127, 64, 64, 64, 64, 64, 64, 64, 64, 127, 127, 127, 127, 127, 127, 127, 127, 0, 0],
+  };
+
+  root.EMMods = { GESTURES, defaults, fresh, macroOf, macroFormula, macroNames, RECIRC_TYPES, RECIRC_DESC, RECIRC_CC, MASTER_KNOBS, CONV_IRS, MASTER_DEFAULTS };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.EMMods;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
@@ -1115,8 +1132,11 @@ main.nopal #palette { display: none; }
   // -------- Osc/Filter slot types (s_Mat_Poke idOscFilTyp1..5 values)
   const OSC_FAMILY = {};
   const oscType = (value, name, group, inputs, extra = {}) => { OSC_FAMILY[value] = { value, name, group, inputs, ...extra }; };
-  const filt = (value, name, bLabel = 'Width', bDesc = 'Bandwidth: smaller values narrow it and add resonance', bMax = 2) =>
-    oscType(value, name, 'Filters', [A('In', 'Audio input'), KHZ('Cutoff', 'Cutoff / centre frequency in kHz'), C(bLabel, bDesc, 0, bMax)],
+  // `dflt` is the dial value a new module starts with. Filters start open and audible: low passes at 9 kHz,
+  // high passes at 10 Hz, the others at 1 kHz; Width 1 (at 0 a filter passes almost nothing, so its minimum is 0.01).
+  const D = (inp, dflt) => ({ ...inp, dflt });
+  const filt = (value, name, cutoff, bLabel = 'Width', bDesc = 'Bandwidth: smaller values narrow it and add resonance (minimum 0.01)', bMax = 2) =>
+    oscType(value, name, 'Filters', [A('In', 'Audio input'), D(KHZ('Cutoff', 'Cutoff / centre frequency in kHz'), cutoff), D(C(bLabel, bDesc, 0.01, bMax), 1)],
       { options: { cascade: true, extreme: true } });
   oscType(0, 'DSF oscillator', 'Oscillators', [C('Phase mod', 'Phase modulation, 0 = 0, 1 = 2π. Leave at 0 for a plain oscillator.', -1, 1), KHZ(), C('Brightness', 'Spectral balance: 0 = pure sine, 1 = maximum harmonics')]);
   oscType(1, 'Integrated DSF osc', 'Oscillators', [C('Phase mod', 'Phase modulation input', -1, 1), KHZ(), C('Brightness', 'Spectral balance: 0 = pure sine, 1 = maximum harmonics')]);
@@ -1127,11 +1147,11 @@ main.nopal #palette { display: none; }
   oscType(3, 'Phase generator', 'Oscillators', [C('Phase mod', 'Phase modulation input', -1, 1), KHZ(), C('Spread (Hz)', 'Frequency spread in Hz for the sum-of-7 option', 0, 10)],
     { options: { variant: ['Sum of 7 phases', 'Ramp up', 'Ramp down', 'Triangle'] } });
   oscType(4, 'Noise from seed', 'Oscillators', [C('Seed', 'Seed value for the noise'), UNUSED, C('Trigger', 'Going above 0 reseeds the noise', -1, 1)]);
-  filt(5, 'Low pass'); filt(6, 'High pass'); filt(7, 'Band pass'); filt(8, 'Band reject'); filt(9, 'All pass');
-  filt(10, 'Low shelf'); filt(11, 'High shelf');
-  oscType(12, 'Low pass, 1 pole', 'Filters', [A('In', 'Audio input'), KHZ('Cutoff', 'Cutoff in kHz'), UNUSED]);
-  oscType(13, 'High pass, 1 pole', 'Filters', [A('In', 'Audio input'), KHZ('Cutoff', 'Cutoff in kHz'), UNUSED]);
-  oscType(19, 'Ladder low pass', 'Filters', [A('In', 'Audio input'), KHZ('Cutoff', 'Cutoff in kHz'), C('Resonance', '0 = maximum resonance, 1 = minimum resonance')],
+  filt(5, 'Low pass', 9); filt(6, 'High pass', 0.01); filt(7, 'Band pass', 1); filt(8, 'Band reject', 1); filt(9, 'All pass', 1);
+  filt(10, 'Low shelf', 1); filt(11, 'High shelf', 1);
+  oscType(12, 'Low pass, 1 pole', 'Filters', [A('In', 'Audio input'), D(KHZ('Cutoff', 'Cutoff in kHz'), 9), UNUSED]);
+  oscType(13, 'High pass, 1 pole', 'Filters', [A('In', 'Audio input'), D(KHZ('Cutoff', 'Cutoff in kHz'), 0.01), UNUSED]);
+  oscType(19, 'Ladder low pass', 'Filters', [A('In', 'Audio input'), D(KHZ('Cutoff', 'Cutoff in kHz'), 9), D(C('Resonance', '0 = maximum resonance, 1 = minimum resonance'), 0.7)],
     { options: { variant: ['Transistor ladder', 'Diode ladder'], extreme: true } });
   oscType(14, 'Multiplier (ring mod)', 'Processors', [A('In 1', 'First audio input'), A('In 2', 'Second audio input, multiplied by the first'), C('Delay', 'Successively longer delay on the second input')]);
   oscType(15, 'Tanh saturator', 'Processors', [A('In', 'Audio input'), C('Drive', 'Drive amount', 0, 4), C('Col 3', 'Third column')]);
@@ -1975,6 +1995,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     const def = DEFS[res.slotId];
     if (res.wire !== undefined && def.typeId) setSetup(def.typeId, res.wire);
     if (it.kind === 'bank') applyBankDefaults(def, it.type);
+    applyInputDefaults(def);
     // Like a new oscillator or bank in the Haken Editor, the main Freq input follows the played pitch (X).
     if ((it.kind === 'osc' && it.type.group === 'Oscillators') || it.kind === 'bank') {
       const fi = MOD.describeNode(def, S).inputs.find(i => i.follow === MOD.FOLLOW_X && /^Freq$|^F1$/.test(i.label));
@@ -2684,6 +2705,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     openDialog('Convolution', b => {
       if (dialect() === 'legacy') { b.append(el('div', { class: 'note', text: 'Older firmware (10.09) stores convolution settings in a different layout that is not decoded yet, so they cannot be edited here. The Master columns Conv 1/2 index and mix still work as normal inputs.' })); return; }
       if (!S.conv.length) b.append(el('div', { class: 'note', text: 'The device has not sent its convolution settings yet. Read the patch from the Osmose first.' }));
+      else if (!S.conv[1] && !S.conv[3]) b.append(el('div', { class: 'note', text: 'Convolution is off: both Mix values are 0. Raise a Mix to hear it.' }));
       const c = S.conv, row = (id, label, desc, max = 127) => sliderRow({ key: 'cv' + id, label, desc, min: 0, max, step: 1, get: () => c[id] ?? 0, set: v => setConvVal(id, v) });
       b.append(el('h3', { text: 'Before the recirculator' }), row(0, 'Index', 'Which response, moving through the four set below (adds to the Conv 1 index column)'), row(1, 'Mix', 'Dry / wet (adds to the Conv 1 mix column)'));
       b.append(el('h3', { text: 'After the recirculator' }), row(2, 'Index', 'Adds to the Conv 2 index column'), row(3, 'Mix', 'Adds to the Conv 2 mix column'));
@@ -2696,6 +2718,23 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
       const cb = el('input', { type: 'checkbox', checked: !!c[28], onchange: e => setConvVal(28, e.target.checked ? 1 : 0) });
       b.append(el('div', { class: 'row', 'data-tip': 'Equal power\nKeeps the level steadier when moving between responses' }, el('label', { text: 'Equal power' }), cb));
     });
+  }
+  /** A new patch's Master section: Global FX and convolution off, levels / EQ / compressor at sensible values.
+   *  force = reset everything (New); otherwise only fill in what is missing (start-up, opened files). */
+  function applyMasterDefaults(s, force) {
+    const D = MODS.MASTER_DEFAULTS;
+    for (const [id, v] of Object.entries(D.setup)) if (force || s.setup[id] === undefined) s.setup[id] = v;
+    for (const [cc, v] of Object.entries(D.globals)) if (force || s.globals[cc] === undefined) s.globals[cc] = v;
+    if (force || !s.conv.length) s.conv = D.conv.slice();
+  }
+  /** Messages that put the Osmose's Master section (global cc and convolution) where the screen shows it.
+   *  withSetup adds the Global FX on/off, its type and compressor/tanh (pushAll sends all setup itself). */
+  function masterFxMsgs(dlt, withSetup) {
+    const out = [];
+    if (withSetup) for (const id of Object.keys(MODS.MASTER_DEFAULTS.setup)) if (S.setup[id] !== undefined) { try { out.push(...EM.Encoder.setSetup(dlt, +id, S.setup[id])); } catch { /* unknown in this dialect */ } }
+    for (const [cc, v] of Object.entries(S.globals || {})) out.push(...EM.Encoder.setGlobal(+cc, v));
+    if (dlt !== 'legacy') S.conv.forEach((v, id) => { if (v !== undefined && v !== null) out.push(...EM.Encoder.setConv(dlt, id, v)); });
+    return out;
   }
   function setConvVal(id, v) {
     try { midiSend(EM.Encoder.setConv(dialect(), id, v)); S.conv[id] = v; } catch (err) { setStatus('Not sent: ' + err.message, 'warn'); }
@@ -2779,7 +2818,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
       // The type list stays within the module's family: a Filter module offers every filter type.
       const fam = (MOD.OSC_FAMILY[cur] || MOD.OSC_FAMILY[0]).group;
       Object.values(MOD.OSC_FAMILY).filter(t => t.group === fam).forEach(t => opts.push({ value: t.value, text: t.name }));
-      a.append(selectRow(fam === 'Filters' ? 'Filter type' : fam === 'Processors' ? 'Processor' : 'Oscillator', opts, cur, v => setSetup(def.typeId, v)));
+      a.append(selectRow(fam === 'Filters' ? 'Filter type' : fam === 'Processors' ? 'Processor' : 'Oscillator', opts, cur, v => { const was = MOD.describeNode(def, S).inputs; setSetup(def.typeId, v); applyInputDefaults(def, was); }));
       const t = n.type;
       const legacy = dialect() === 'legacy';
       const slotName = k => { const d = DEFS['osc' + k]; return placed.has(d.id) ? (MOD.OSC_FAMILY[S.setup[d.typeId] ?? 0]?.name || 'module') : 'empty'; };
@@ -2896,6 +2935,15 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     if (n.inputs.length) { a.append(el('h3', { text: 'Cables in' })); a.append(connList((r, c) => cols.has(c) && !isHiddenCell(r, c, S.cells.get(EM.key(r, c))))); }
     if (n.outputs.length) { a.append(el('h3', { text: 'Cables out' })); a.append(connList(r => rows.has(r))); }
     if (!def.fixed) a.append(el('div', { class: 'row', style: 'margin-top:16px' }, el('button', { class: 'danger', onclick: () => removeModule(n.id), text: 'Remove from patch' })));
+  }
+  /** Inputs with a starting value (filter Cutoff and Width…) get it when the module is added, or when its type
+   *  changes and the dial is still empty or at the previous type's starting value (so a value the user set stays). */
+  function applyInputDefaults(def, was) {
+    for (const inp of MOD.describeNode(def, S).inputs) {
+      if (inp.kind !== 'ctl' || inp.dflt === undefined || !MOD.dialAvailable(S, inp.col)) continue;
+      const cur = MOD.dialValue(S, inp.col), prev = was && was.find(w => w.col === inp.col);
+      if (cur === 0 || (prev && prev.dflt !== undefined && Math.abs(cur - prev.dflt) < 1e-6)) setDial(inp, inp.dflt);
+    }
   }
   /** A newly chosen BiqBank / SineBank / Kinetic gets the firmware's default properties
    *  (BiqBank and SineBank columns 3..7 = sF, B, sB, C, sA), as the Haken Editor does. */
@@ -3215,6 +3263,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     mods = new Map((obj.mods || []).filter(m => m.kind === 'macro' || MODS.GESTURES[m.g]).map(m => [m.id, m]));
     for (const k of ['globals', 'macros', 'graphs', 'conv', 'detune']) if (obj[k]) S[k] = obj[k];
     if (obj.text) S.text = obj.text;
+    applyMasterDefaults(S);
   }
   function importMid(buf, name) {
     const msgs = EM.parseSmf(buf);
@@ -3236,20 +3285,36 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     // go out too, so the Osmose doesn't keep its previous preset's values behind the screen's back.
     const setup = { 15: 0, 16: 0, 62: 0, ...S.setup };
     for (const [id, v] of Object.entries(setup)) { try { out.push(...EM.Encoder.setSetup(dlt, +id, v)); } catch { /* unknown in this dialect */ } }
-    for (const [cc, v] of Object.entries(S.globals || {})) out.push(...EM.Encoder.setGlobal(+cc, v));
+    out.push(...masterFxMsgs(dlt, false));
     for (const [i, raw] of Object.entries(S.macros || {})) { try { out.push(...EM.Encoder.setMacro(+i, EM.macroToValue(+i, raw))); } catch { /* */ } }
     if (dlt === 'legacy' && S.legacyRaw) for (const ch of [15, 16]) for (const [cc, v] of Object.entries(S.legacyRaw[ch] || {})) out.push([0xB0 | (ch - 1), +cc, v]);
     for (const [n, f] of Object.entries(S.formulas)) {
       out.push(...EM.Encoder.formulaChanges(dlt, +n, f.pairs, f.pairs, null, null));
     }
     for (const [k, c] of S.cells) { const [r, col] = EM.unkey(k); try { out.push(...EM.Encoder.setCell(dlt, r, col, c)); } catch (e) { logInfo(e.message); } }
+    sendPaced(out, () => { logInfo('Patch sent.'); if (silent === true) setStatus('The Osmose now plays the patch shown here (its preset is untouched: pick it again on the Osmose to get it back). Read patch brings a preset in.', 'on'); });
+  }
+  /** Send a long list of messages in small bursts so the device's receive queue keeps up. */
+  function sendPaced(out, done) {
     logInfo(`Sending ${out.length} messages…`);
-    // pace the burst a little so the device's receive queue keeps up
-    let i = 0; const step = () => { midiSend(out.slice(i, i + 40)); i += 40; if (i < out.length) setTimeout(step, 15); else { logInfo('Patch sent.'); if (silent === true) setStatus('The Osmose now plays the patch shown here (its preset is untouched: pick it again on the Osmose to get it back). Read patch brings a preset in.', 'on'); } };
+    let i = 0; const step = () => { midiSend(out.slice(i, i + 40)); i += 40; if (i < out.length) setTimeout(step, 15); else if (done) done(); };
     step();
   }
+  /** Clear: empty the patch here and on the Osmose. Besides the matrix clear, every connection that was on
+   *  screen is written empty one by one (the same message as deleting a cable), and the Master section goes
+   *  back to its defaults, so the instrument is silent and matches the screen even if it ignores the clear. */
+  function clearPatch() {
+    const was = [...S.cells.keys()].map(k => EM.unkey(k));
+    S.cells.clear(); S.formulas = {}; mods = new Map(); pendingLetters.clear(); dismissedMacros.clear(); applyMasterDefaults(S, true);
+    selected = null; placed = new Set(START); scheduleRender();
+    if (!midi.out) return;
+    const dlt = dialect(), out = [...EM.Encoder.clearMatrix(dlt)];
+    for (const [r, c] of was) { try { out.push(...EM.Encoder.setCell(dlt, r, c, null)); } catch { /* */ } }
+    out.push(...masterFxMsgs(dlt, true));
+    sendPaced(out, () => { logInfo('Patch cleared on the Osmose.'); setStatus('Cleared here and on the Osmose (nothing is stored to a preset).', 'on'); });
+  }
   function demoPatch() {
-    S = EM.newState(); makeDecoder();
+    S = EM.newState(); makeDecoder(); applyMasterDefaults(S);
     S.name = 'Demo: simple pressure synth';
     const put = (r, c, label) => S.cells.set(EM.key(r, c), EM.parseCellValue(label));
     S.setup[EM.SETUP.OscType1] = 0;     // Osc 1: DSF oscillator
@@ -3276,7 +3341,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
   $('#dialectSel').value = userDialect;
   $('#dialectSel').addEventListener('change', e => { userDialect = e.target.value; store.set('dialect', userDialect); dec.setDialect(userDialect === 'auto' ? 'auto' : userDialect); renderHeader(); scheduleRender(); });
   $('#demoBtn').addEventListener('click', () => { demoPatch(); renderAll(); fitView(); renderInspector(); });
-  $('#newBtn').addEventListener('click', () => { if (confirm('Clear the patch shown here? (Sends a matrix clear to the device if connected.)')) { S.cells.clear(); S.formulas = {}; mods = new Map(); pendingLetters.clear(); dismissedMacros.clear(); midiSend(EM.Encoder.clearMatrix(dialect())); selected = null; placed = new Set(START); scheduleRender(); } });
+  $('#newBtn').addEventListener('click', () => { if (confirm('Clear the patch shown here' + (midi.out ? ' and on the Osmose? (Nothing is stored to a preset slot.)' : '?'))) clearPatch(); });
   $('#saveBtn').addEventListener('click', async () => {
     try {
       const saved = await saveAs((S.name || 'patch').replace(/[^\w\- ]+/g, '') + '.osmpatch.json', stateToJson());
@@ -3335,6 +3400,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
   document.addEventListener('pointerdown', hideTip, true);
   document.addEventListener('wheel', hideTip, { passive: true, capture: true });
 
+  applyMasterDefaults(S);
   renderAll(); renderInspector(); initMidi();
   window.osmosePatcher = { get state() { return S; }, get placed() { return placed; }, get mods() { return mods; }, get selected() { return selected; }, get capture() { return midi.capture; }, midiSend, connect, disconnectModIn: (id, r) => disconnectModIn(mods.get(id), r), dec: () => dec, dialect }; // for debugging from the console
 })();

@@ -21,8 +21,11 @@
   // -------- Osc/Filter slot types (s_Mat_Poke idOscFilTyp1..5 values)
   const OSC_FAMILY = {};
   const oscType = (value, name, group, inputs, extra = {}) => { OSC_FAMILY[value] = { value, name, group, inputs, ...extra }; };
-  const filt = (value, name, bLabel = 'Width', bDesc = 'Bandwidth: smaller values narrow it and add resonance', bMax = 2) =>
-    oscType(value, name, 'Filters', [A('In', 'Audio input'), KHZ('Cutoff', 'Cutoff / centre frequency in kHz'), C(bLabel, bDesc, 0, bMax)],
+  // `dflt` is the dial value a new module starts with. Filters start open and audible: low passes at 9 kHz,
+  // high passes at 10 Hz, the others at 1 kHz; Width 1 (at 0 a filter passes almost nothing, so its minimum is 0.01).
+  const D = (inp, dflt) => ({ ...inp, dflt });
+  const filt = (value, name, cutoff, bLabel = 'Width', bDesc = 'Bandwidth: smaller values narrow it and add resonance (minimum 0.01)', bMax = 2) =>
+    oscType(value, name, 'Filters', [A('In', 'Audio input'), D(KHZ('Cutoff', 'Cutoff / centre frequency in kHz'), cutoff), D(C(bLabel, bDesc, 0.01, bMax), 1)],
       { options: { cascade: true, extreme: true } });
   oscType(0, 'DSF oscillator', 'Oscillators', [C('Phase mod', 'Phase modulation, 0 = 0, 1 = 2π. Leave at 0 for a plain oscillator.', -1, 1), KHZ(), C('Brightness', 'Spectral balance: 0 = pure sine, 1 = maximum harmonics')]);
   oscType(1, 'Integrated DSF osc', 'Oscillators', [C('Phase mod', 'Phase modulation input', -1, 1), KHZ(), C('Brightness', 'Spectral balance: 0 = pure sine, 1 = maximum harmonics')]);
@@ -33,11 +36,11 @@
   oscType(3, 'Phase generator', 'Oscillators', [C('Phase mod', 'Phase modulation input', -1, 1), KHZ(), C('Spread (Hz)', 'Frequency spread in Hz for the sum-of-7 option', 0, 10)],
     { options: { variant: ['Sum of 7 phases', 'Ramp up', 'Ramp down', 'Triangle'] } });
   oscType(4, 'Noise from seed', 'Oscillators', [C('Seed', 'Seed value for the noise'), UNUSED, C('Trigger', 'Going above 0 reseeds the noise', -1, 1)]);
-  filt(5, 'Low pass'); filt(6, 'High pass'); filt(7, 'Band pass'); filt(8, 'Band reject'); filt(9, 'All pass');
-  filt(10, 'Low shelf'); filt(11, 'High shelf');
-  oscType(12, 'Low pass, 1 pole', 'Filters', [A('In', 'Audio input'), KHZ('Cutoff', 'Cutoff in kHz'), UNUSED]);
-  oscType(13, 'High pass, 1 pole', 'Filters', [A('In', 'Audio input'), KHZ('Cutoff', 'Cutoff in kHz'), UNUSED]);
-  oscType(19, 'Ladder low pass', 'Filters', [A('In', 'Audio input'), KHZ('Cutoff', 'Cutoff in kHz'), C('Resonance', '0 = maximum resonance, 1 = minimum resonance')],
+  filt(5, 'Low pass', 9); filt(6, 'High pass', 0.01); filt(7, 'Band pass', 1); filt(8, 'Band reject', 1); filt(9, 'All pass', 1);
+  filt(10, 'Low shelf', 1); filt(11, 'High shelf', 1);
+  oscType(12, 'Low pass, 1 pole', 'Filters', [A('In', 'Audio input'), D(KHZ('Cutoff', 'Cutoff in kHz'), 9), UNUSED]);
+  oscType(13, 'High pass, 1 pole', 'Filters', [A('In', 'Audio input'), D(KHZ('Cutoff', 'Cutoff in kHz'), 0.01), UNUSED]);
+  oscType(19, 'Ladder low pass', 'Filters', [A('In', 'Audio input'), D(KHZ('Cutoff', 'Cutoff in kHz'), 9), D(C('Resonance', '0 = maximum resonance, 1 = minimum resonance'), 0.7)],
     { options: { variant: ['Transistor ladder', 'Diode ladder'], extreme: true } });
   oscType(14, 'Multiplier (ring mod)', 'Processors', [A('In 1', 'First audio input'), A('In 2', 'Second audio input, multiplied by the first'), C('Delay', 'Successively longer delay on the second input')]);
   oscType(15, 'Tanh saturator', 'Processors', [A('In', 'Audio input'), C('Drive', 'Drive amount', 0, 4), C('Col 3', 'Third column')]);

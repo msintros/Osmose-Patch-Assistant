@@ -50,7 +50,12 @@ preset `.mid` file with **Open…**.
   the macro on the instrument. A cable from it adds "macro × amount" to an input; click the
   cable label to set the amount. Macros named in the preset text appear with their names.
 - **Master**: its panel has levels, compressor / tanh and tilt EQ. The Global FX (recirculator) and Convolution
-  buttons on the module open those windows.
+  buttons on the module open those windows. A new patch starts with Global FX switched off (Short reverb, ready
+  for when it is enabled) and convolution off (both Mix values 0); Connect and Clear send these to the Osmose, so
+  the screen and the instrument match from the start.
+- A new **Filter** starts audible: Width 1 (minimum 0.01), Cutoff 9 kHz for low passes (ladder too, with
+  Resonance 0.7), 10 Hz for high passes and 1 kHz for the others. Changing the filter type moves a Cutoff
+  still at its starting value to the new type's start; a value you set stays.
 - **BiqGraph**: Edit graphs… in its panel draws the mode amplitude and offset graphs.
 - Hover over anything for a short explanation. Delete removes the selected cable or module.
 - Drag from an output (right edge of a module) to an input (left edge) to connect them.
