@@ -15,6 +15,25 @@ for (let i = -900; i <= 900; i += 7) {
   for (const [r, c] of w) if (c) S.cells.set(EM.key(r, 20), c); else S.cells.delete(EM.key(r, 20));
   assert.strictEqual(M.dialValue(S, 20), 2.37); }
 
+// Wide dials (Jenny Bx / Fx): values up to 127 round-trip using a constant on the × row (16).
+{ const apply = (S, w) => { for (const [r, c] of w) if (c) S.cells.set(EM.key(r, 20), c); else S.cells.delete(EM.key(r, 20)); };
+  for (const v of [...Array.from({ length: 127 }, (_, i) => i + 1), 1.5, 12.7, 9.99, 63.37, 100.25]) {
+    const S = EM.newState(); apply(S, M.dialWrites(S, 20, v, true));
+    assert(Math.abs(M.dialValue(S, 20, true) - v) < 2e-4, 'wide dial ' + v + ' got ' + M.dialValue(S, 20, true));
+    if (v <= 9) assert(!S.cells.get(EM.key(16, 20)), 'no × row needed for ' + v);
+    if (Number.isInteger(v)) assert.strictEqual(M.dialValue(S, 20, true), v, 'integer ' + v + ' is exact');
+    // Changing it back down clears the multiplier.
+    apply(S, M.dialWrites(S, 20, 2, true)); assert.strictEqual(M.dialValue(S, 20, true), 2); assert(!S.cells.get(EM.key(16, 20)));
+  }
+  // A modulator letter on the × row is left alone; the dial falls back to the Direct rows.
+  const S = EM.newState(); S.cells.set(EM.key(16, 20), { code: 4, dec: 0 });
+  const w = M.dialWrites(S, 20, 50, true); assert(!w.some(([r]) => r === 16)); }
+// Jenny: columns are Bx, Fx, S with the Haken Editor's ranges.
+{ const j = M.OSC_FAMILY ? M.OSC_FAMILY[2] : null;
+  if (j) { assert.deepStrictEqual(j.inputs.map(i => i.label), ['Bx', 'Fx', 'S']);
+    assert.deepStrictEqual(j.inputs.map(i => [i.min, i.max]), [[1, 12.7], [1, 127], [0, 1]]);
+    assert(j.inputs[1].quantize && !j.inputs[0].quantize); } }
+
 // Slots: 5 osc/filters, Jenny needs a master oscillator to its left, bank slot rules, 5 SGs.
 const items = Object.fromEntries(M.paletteItems().map(i => [i.key, i]));
 { const S = EM.newState(), placed = new Set(['master']);

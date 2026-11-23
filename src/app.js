@@ -157,6 +157,17 @@
     const inp = n.inputs.find(i => i.col === col);
     return !!inp && inp.kind === 'ctl';
   }
+  /** The module input on a column (placed or not), or null. */
+  function inputAt(col) {
+    const h = portIn.get(col); if (h) return h.inp;
+    const d = Object.values(DEFS).find(x => x.cols.includes(col)); if (!d) return null;
+    return MOD.describeNode(d, S).inputs.find(i => i.col === col) || null;
+  }
+  /** Wide dials (Jenny Bx, Fx) go above 9 by also putting a constant on the column's × row. */
+  const wideCol = col => !!inputAt(col)?.wide;
+  const dialV = col => MOD.dialValue(S, col, wideCol(col));
+  const dialW = (col, v) => MOD.dialWrites(S, col, v, wideCol(col));
+  const quantOn = inp => !!(inp.quantize && S.quant && S.quant[inp.col]);
   /** Modulators used as a VCA: col -> the modulator whose letter is on that column's × row. */
   function vcaByCol() {
     const out = new Map(), own = ownedLetters();
@@ -169,7 +180,7 @@
   }
   /** A signal cell that is really "source → modulator In" (drawn into the modulator, not to the column). */
   const isVcaFeed = (r, c, vb) => { const m = (vb || vcaByCol()).get(c); return !!m && r !== 16 && m.ins.includes(r); };
-  const isHiddenCell = (r, c, cell, vb) => (MOD.isDialCell(r, cell) && isDialInput(c)) || isVcaFeed(r, c, vb);
+  const isHiddenCell = (r, c, cell, vb) => (MOD.isDialCell(r, cell) && isDialInput(c)) || (r === 16 && MOD.constMul(cell) !== null && wideCol(c)) || isVcaFeed(r, c, vb);
   /** Where a cell's cable is drawn from: a modulator / macro that owns its formula, or its matrix row. */
   function cableSource(r, cell) {
     if (r >= 13 && r <= 16) {
@@ -254,7 +265,7 @@
     setBankProp(inp.propStream, inp.propIndex, raw);
   }
   function propKnob(inp) {
-    const offset = MOD.dialValue(S, inp.col);
+    const offset = dialV(inp.col);
     return { key: 'c' + inp.col, label: inp.label, desc: inp.desc + (offset ? `\nThe matrix also adds ${fmtVal(offset)} to this column (from the preset).` : ''),
       min: inp.min, max: inp.max, step: inp.step, get: () => propGet(inp), set: v => propSet(inp, v),
       nudge: k => propSet(inp, propGet(inp) + k * inp.step), type: () => { const t = prompt(`${inp.label} (${inp.min} to ${inp.max})`, fmtVal(propGet(inp))); if (t !== null && t.trim() !== '' && !isNaN(+t)) propSet(inp, +t); } };
@@ -271,7 +282,7 @@
   // ---- pitch helpers for inputs that follow X: detune (app-side, folded into the dial constant) and
   // octave (a constant on the column's × row: ×0.25, ×0.5, ×2, ×4).
   const detuneOf = col => (S.detune && S.detune[col]) || 0;
-  const coarseDial = col => Math.round((MOD.dialValue(S, col) - detuneOf(col)) * 10000) / 10000;
+  const coarseDial = col => Math.round((dialV(col) - detuneOf(col)) * 10000) / 10000;
   const OCT_CELLS = { '-2': { code: 49, dec: 2500 }, '-1': { code: 49, dec: 5000 }, '1': { code: 51, dec: 0 }, '2': { code: 53, dec: 0 } };
   function octaveOf(col) {
     const c = S.cells.get(EM.key(16, col)); if (!c) return 0;
@@ -287,7 +298,7 @@
     const coarse = coarseDial(inp.col);
     S.detune = S.detune || {}; S.detune[inp.col] = Math.round(d * 10000) / 10000;
     if (!MOD.dialAvailable(S, inp.col)) return;
-    for (const [r, cell] of MOD.dialWrites(S, inp.col, Math.round((coarse + S.detune[inp.col]) * 10000) / 10000)) queueCell(r, inp.col, cell);
+    for (const [r, cell] of dialW(inp.col, Math.round((coarse + S.detune[inp.col]) * 10000) / 10000)) queueCell(r, inp.col, cell);
     scheduleRender(false);
   }
   /** Knob spec for a modulator parameter or a macro value. */
@@ -709,9 +720,9 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     const existing = S.cells.get(k);
     if (existing && isHiddenCell(row, col, existing)) {
       // The Direct row holds this input's dial value: move the value to the other dial rows first.
-      const v = MOD.dialValue(S, col); setCell(row, col, null);
+      const v = dialV(col); setCell(row, col, null);
       S.cells.set(k, { code: 63, dec: 0 });                 // placeholder so dialWrites skips this row
-      const w = MOD.dialWrites(S, col, v); S.cells.delete(k);
+      const w = dialW(col, v); S.cells.delete(k);
       w.forEach(([r, c]) => setCell(r, col, c));
     } else if (existing) { select({ kind: 'cable', row, col }); return; }
     let cell;
@@ -741,9 +752,9 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
       const cur = S.cells.get(EM.key(r, col));
       if (cur && (cur.code & 63) === letter) return r;
       if (cur && !MOD.isDialCell(r, cur)) continue;
-      const v = MOD.dialValue(S, col);
+      const v = dialV(col);
       setCell(r, col, { code: letter, dec: 0 });
-      for (const [rr, c] of MOD.dialWrites(S, col, v)) setCell(rr, col, c);
+      for (const [rr, c] of dialW(col, v)) setCell(rr, col, c);
       return r;
     }
     return null;
@@ -777,7 +788,13 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
   // ---- modulators as VCAs: out = In × modulator. In EaganMatrix terms the In signals go on the
   // destination column's own rows and the modulator's letter on its × (Multiply) row.
   function placeVca(m, col, letter) {
-    const cur = S.cells.get(EM.key(16, col));
+    let cur = S.cells.get(EM.key(16, col));
+    if (cur && wideCol(col) && MOD.constMul(cur) !== null) {
+      // The × row holds this wide dial's multiplier: fold the value back onto the Direct rows (at most 9).
+      const v = dialV(col); setCell(16, col, null); cur = null;
+      for (const [rr, cc] of dialW(col, Math.min(9, v))) setCell(rr, col, cc);
+      if (v > 9) setStatus('This input’s value was above 9, which needs its × row; it is now 9 while a modulator scales it.', 'warn');
+    }
     if (cur && (cur.code & 63) !== letter) {
       setStatus('That input is already scaled by something else. The Osmose has one × row per input, so only one modulator can scale it.', 'warn');
       if (m.kind === 'macro') { delete S.formulas[letter]; }
@@ -809,7 +826,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
       for (const [r, c] of modOuts(m)) {
         const cell = S.cells.get(EM.key(r, c)), letter = cell.code & 63;
         setCell(r, c, null);
-        for (const [rr, cc] of MOD.dialWrites(S, c, MOD.dialValue(S, c))) setCell(rr, c, cc);
+        for (const [rr, cc] of dialW(c, dialV(c))) setCell(rr, c, cc);
         if (!placeVca(m, c, letter)) { /* × row taken: that output is dropped */ }
       }
     }
@@ -882,7 +899,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
       const def = DEFS['sg' + m.sg], cur = S.setup[def.typeId] ?? 0;
       if (full || (cur & 3) !== out.sg.type) setSetup(def.typeId, (cur & ~3) | out.sg.type);
       const fcol = def.cols[0], tcol = def.cols[1];
-      if (Math.abs(MOD.dialValue(S, fcol) - out.sg.rate) > 1e-4) setSgRate(fcol, out.sg.rate);
+      if (Math.abs(dialV(fcol) - out.sg.rate) > 1e-4) setSgRate(fcol, out.sg.rate);
       // Restart each note: the gate (W) triggers it. Free running: a constant 1, so it starts with
       // every voice and keeps cycling (with no trigger at all it never starts).
       const t = S.cells.get(EM.key(13, tcol)), want = out.sg.trigger ? 45 : 50;
@@ -1014,17 +1031,26 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
   function setDial(inp, v) {
     const col = inp.col;
     if (!MOD.dialAvailable(S, col)) { setStatus('The Direct rows into this input are all used by cables, so there is no room for a dial value.', 'warn'); return; }
+    if (quantOn(inp)) v = Math.round(v);
     v = Math.round((snap(v, inp) + detuneOf(col)) * 10000) / 10000;
-    for (const [r, cell] of MOD.dialWrites(S, col, v)) queueCell(r, col, cell);
+    for (const [r, cell] of dialW(col, v)) queueCell(r, col, cell);
     scheduleRender(false);
-    const f = document.querySelector(`#inspector input[data-dial="${col}"]`); if (f && document.activeElement !== f) f.value = fmtVal(MOD.dialValue(S, col));
+    const f = document.querySelector(`#inspector input[data-dial="${col}"]`); if (f && document.activeElement !== f) f.value = fmtVal(dialV(col));
+    const rg = f && f.parentElement.querySelector('input[type="range"]'); if (rg && document.activeElement !== rg) rg.value = coarseDial(col);
+  }
+  /** Integer-only dial (Jenny Fx): the setting is app-side; switching it on rounds the current value. */
+  function setQuant(inp, on) {
+    S.quant = S.quant || {};
+    if (on) S.quant[inp.col] = true; else delete S.quant[inp.col];
+    if (on && MOD.dialAvailable(S, inp.col)) setDial(inp, coarseDial(inp.col));
+    scheduleRender();
   }
   function nudgeDial(inp, steps) {
     const span = inp.max - inp.min;
     setDial(inp, coarseDial(inp.col) + steps * Math.max(inp.step || 0.01, span / 100));
   }
   function typeDial(inp) {
-    const t = prompt(`${inp.label} (${inp.min} to ${inp.max}${inp.unit ? ' ' + inp.unit : ''})`, fmtVal(MOD.dialValue(S, inp.col)));
+    const t = prompt(`${inp.label} (${inp.min} to ${inp.max}${inp.unit ? ' ' + inp.unit : ''})`, fmtVal(dialV(inp.col)));
     if (t === null || t.trim() === '' || isNaN(+t)) return;
     setDial(inp, +t);
   }
@@ -1032,10 +1058,10 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
   function setFollow(inp, on) {
     const k = EM.key(13, inp.col), cur = S.cells.get(k);
     if (on) {
-      const keep = MOD.dialValue(S, inp.col);
+      const keep = dialV(inp.col);
       if (cur && !MOD.isDialCell(13, cur)) { alert('The Direct + row into this input already holds ' + EM.cellLabel(cur) + '.'); return; }
       setCell(13, inp.col, { code: inp.follow.code, dec: 0 });
-      for (const [r, cell] of MOD.dialWrites(S, inp.col, keep)) queueCell(r, inp.col, cell);
+      for (const [r, cell] of dialW(inp.col, keep)) queueCell(r, inp.col, cell);
     } else if (cur && (cur.code & 63) === inp.follow.code) setCell(13, inp.col, null);
     scheduleRender();
   }
@@ -1391,7 +1417,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
           ctl.classList.add('assign');
           ctl.dataset.tip = `Column ${i + 1}\nWhich property this column drives. A property can be on one column only.${inp.prop ? '\n' + inp.desc : ''}`;
           a.append(ctl);
-          const offset = MOD.dialValue(S, inp.col);
+          const offset = dialV(inp.col);
           if (inp.prop && offset) a.append(el('div', { class: 'note' }, `The matrix also adds ${fmtVal(offset)} to this column (from the preset). `,
             el('a', { onclick: () => setDial({ ...inp, prop: undefined }, 0), text: 'Remove it' })));
         });
@@ -1427,12 +1453,17 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
       a.append(el('h3', { text: 'Controls' }));
       for (const inp of ctl) {
         const v = coarseDial(inp.col);
-        const num = el('input', { type: 'number', step: inp.step, min: inp.min, max: inp.max, value: fmtVal(v), 'data-dial': inp.col, disabled: !MOD.dialAvailable(S, inp.col) });
+        const st = quantOn(inp) ? 1 : inp.step;
+        const num = el('input', { type: 'number', step: st, min: inp.min, max: inp.max, value: fmtVal(v), 'data-dial': inp.col, disabled: !MOD.dialAvailable(S, inp.col) });
         num.addEventListener('change', () => { if (num.value !== '' && !isNaN(+num.value)) setDial(inp, +num.value); });
-        const rng = el('input', { type: 'range', step: inp.step, min: inp.min, max: inp.max, value: v, disabled: !MOD.dialAvailable(S, inp.col) });
+        const rng = el('input', { type: 'range', step: st, min: inp.min, max: inp.max, value: v, disabled: !MOD.dialAvailable(S, inp.col) });
         rng.addEventListener('input', () => { editing.until = Date.now() + 600; num.value = rng.value; setDial(inp, +rng.value); });
         const row = el('div', { class: 'ctl', 'data-tip': `${inp.label}\n${inp.desc || ''}` }, el('label', { text: inp.label + (inp.unit ? ` (${inp.unit})` : '') }), rng, num);
         a.append(row);
+        if (inp.quantize) {
+          const cb = el('input', { type: 'checkbox', 'data-quant': inp.col, checked: quantOn(inp), onchange: e => setQuant(inp, e.target.checked) });
+          a.append(el('div', { class: 'follow', 'data-tip': `Integers\nSnaps ${inp.label} to whole numbers (1, 2, 3…), for harmonic resonances.` }, el('label', {}, cb, ' integers only')));
+        }
         if (inp.follow) {
           const cb = el('input', { type: 'checkbox', checked: MOD.followOn(S, inp.col, inp.follow), onchange: e => setFollow(inp, e.target.checked) });
           a.append(el('div', { class: 'follow' }, el('label', {}, cb, ` follow ${inp.follow.name} (${inp.follow.label})`), el('span', { class: 'muted', text: inp.follow.code === 46 ? ' the dial adds to it' : '' })));
@@ -1458,7 +1489,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
   function applyInputDefaults(def, was) {
     for (const inp of MOD.describeNode(def, S).inputs) {
       if (inp.kind !== 'ctl' || inp.dflt === undefined || !MOD.dialAvailable(S, inp.col)) continue;
-      const cur = MOD.dialValue(S, inp.col), prev = was && was.find(w => w.col === inp.col);
+      const cur = dialV(inp.col), prev = was && was.find(w => w.col === inp.col);
       if (cur === 0 || (prev && prev.dflt !== undefined && Math.abs(cur - prev.dflt) < 1e-6)) setDial(inp, inp.dflt);
     }
   }
@@ -1766,7 +1797,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
       cells: [...S.cells].map(([k, c]) => { const [r, col] = EM.unkey(k); return { row: r, col, value: EM.cellLabel(c), code: c.code, dec: c.dec }; }),
       formulas: Object.fromEntries(Object.entries(S.formulas).map(([n, f]) => [EM.formulaLetter(+n), { num: +n, pairs: f.pairs, summary: EM.formulaSummary(f.pairs) }])),
       setup: S.setup, legacyRaw: S.legacyRaw, kinet: S.kinet, biqsin: S.biqsin, modules: [...placed],
-      mods: [...mods.values()], globals: S.globals, macros: S.macros, graphs: S.graphs, conv: S.conv, text: S.text, detune: S.detune,
+      mods: [...mods.values()], globals: S.globals, macros: S.macros, graphs: S.graphs, conv: S.conv, text: S.text, detune: S.detune, quant: S.quant,
     }, null, 1);
   }
   function loadJson(obj) {
@@ -1778,7 +1809,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     S.kinet = obj.kinet || []; S.biqsin = obj.biqsin || []; if (obj.legacyRaw) S.legacyRaw = obj.legacyRaw;
     placed = new Set([...START, ...(obj.modules || []).filter(id => DEFS[id] && id !== 'controls')]);
     mods = new Map((obj.mods || []).filter(m => m.kind === 'macro' || MODS.GESTURES[m.g]).map(m => [m.id, m]));
-    for (const k of ['globals', 'macros', 'graphs', 'conv', 'detune']) if (obj[k]) S[k] = obj[k];
+    for (const k of ['globals', 'macros', 'graphs', 'conv', 'detune', 'quant']) if (obj[k]) S[k] = obj[k];
     if (obj.text) S.text = obj.text;
     applyMasterDefaults(S);
   }

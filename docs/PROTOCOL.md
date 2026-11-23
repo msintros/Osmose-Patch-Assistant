@@ -133,6 +133,14 @@ the others hold a cable. A cell holds 1 to 9 or a four-digit decimal, so 2.37 is
 3 on Direct + (2) and .63 on Direct −. Range ±9 in 0.0001 steps. Cables from the Direct rows
 (formulas, X, W) are left alone and add to the knob value.
 
+The Jenny oscillator's Bx (1 to 12.7) and Fx (1 to 127) go beyond what the Direct rows hold, so
+their knobs also put a constant 2 to 9 on the column's × (Multiply) row when needed: Fx 10 is 5
+on Direct + (2) and 2 on ×, and 127 is 9 + 7 − .125 on the Direct rows and 8 on ×. Every integer
+is exact (integer / 8 always fits).
+The × row multiplies the whole column, so cables into Bx or Fx are scaled by it too. A modulator
+used as a VCA needs that × row, so those knobs are limited to 9 while one scales them. A Jenny's
+columns, left to right, are Bx, Fx and S (spectral balance), as in the Haken Editor 10.52.
+
 ## Architecture of the prototype
 
 - A single HTML page using the browser's Web MIDI API (Chrome or Edge; Safari has no Web

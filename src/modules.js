@@ -31,7 +31,12 @@
   oscType(1, 'Integrated DSF osc', 'Oscillators', [C('Phase mod', 'Phase modulation input', -1, 1), KHZ(), C('Brightness', 'Spectral balance: 0 = pure sine, 1 = maximum harmonics')]);
   oscType(18, 'PWM oscillator', 'Oscillators', [C('Triangle', 'Moves the waveform from square towards triangle'), KHZ(), C('Pulse width', 'Pulse width')],
     { options: { variant: ['Linear PWM', 'Exponential PWM'] } });
-  oscType(2, 'Jenny oscillator', 'Oscillators', [UNUSED, C('Decay ×', 'Bx: bandwidth multiplier, speeds up the resonance decay', 0, 4), C('Freq ×', 'Fx: frequency multiplier relative to the master oscillator to its left', 0, 8)],
+  // Jenny columns, left to right, are Bx, Fx and S (Haken Editor 10.52: OscFil display labels and the Matrix
+  // help texts). Bx and Fx go above 9, so their dials also use the column's × row (`wide`).
+  oscType(2, 'Jenny oscillator', 'Oscillators', [
+    D({ ...C('Bx', 'Bandwidth multiplier: 1 = normal bandwidth, >1 = wider. Speeds up the resonance decay; no effect with No decay.', 1, 12.7), wide: true }, 1),
+    D({ ...C('Fx', 'Frequency multiplier: 1 = resonance at the master oscillator’s frequency, >1 = higher. 5 to 10 are common. The master is the DSF, Integrated DSF or Phase oscillator to its left.', 1, 127), wide: true, quantize: true }, 1),
+    D(C('S', 'Spectral balance / shape: 0 = sine resonance, >0 adds harmonics, 1 = maximum'), 0)],
     { needsMasterLeft: true, options: { variant: ['Sharp decay', 'Smooth decay', 'Hann decay', 'No decay'] } });
   oscType(3, 'Phase generator', 'Oscillators', [C('Phase mod', 'Phase modulation input', -1, 1), KHZ(), C('Spread (Hz)', 'Frequency spread in Hz for the sum-of-7 option', 0, 10)],
     { options: { variant: ['Sum of 7 phases', 'Ramp up', 'Ramp down', 'Triangle'] } });
@@ -306,7 +311,7 @@
     return null;
   }
   /** Sum of the constant contributions into a column (muted cells excluded). */
-  function dialValue(S, col) {
+  function dialValue(S, col, wide) {
     let v = 0, any = false;
     for (const r of DIAL_ROWS) {
       const cell = S.cells.get(EM.key(r, col));
@@ -314,6 +319,7 @@
       const k = cellConst(cell); if (k === null) continue;
       v += r === 15 ? -k : k; any = true;
     }
+    if (any && wide) { const m = constMul(S.cells.get(EM.key(MUL_ROW, col))); if (m !== null) v *= m; }
     return any ? Math.round(v * 10000) / 10000 : 0;
   }
   const intCell = n => ({ code: 49 + n, dec: 0 });
@@ -337,9 +343,55 @@
     else { cells[same[0]] = intCell(Math.round(a)); return { cells, exact: false }; }
     return { cells, exact: true };
   }
-  /** Cells to write so the column's constant becomes v. Returns [[row, cell|null], ...] for changed cells only. */
-  function dialWrites(S, col, v) {
+  // -------- wide dials (Jenny Bx / Fx): value = (Direct rows) × (a constant on the × row), up to 18 × 9.
+  const MUL_ROW = 16;
+  const constMul = cell => (cell && !(cell.code & 64) && isConstCode(cell.code & 63)) ? cellConst(cell) : null;
+  /** Exact cells for 0 <= b <= 18.9999 on the free rows: integers on 14 then 13, the fraction on a free
+   *  positive row or as a negative decimal on 15. Prefers fewer cells and leaving row 13 empty. null if impossible. */
+  function encodeAdd(b, free) {
+    const B = Math.round(b * 10000); if (B < 0) return null;
+    const has = r => free.includes(r);
+    let best = null;
+    for (let p1 = has(14) ? 9 : 0; p1 >= 0; p1--) for (let p2 = 0; p2 <= (has(13) ? 9 : 0); p2++) {
+      const rest = B - (p1 + p2) * 10000, cells = { 14: p1 ? intCell(p1) : null, 13: p2 ? intCell(p2) : null, 15: null };
+      if (rest >= 10000 || rest <= -10000) continue;
+      if (rest > 0) { const r = !p1 && has(14) ? 14 : !p2 && has(13) ? 13 : null; if (!r) continue; cells[r] = decCell(rest); }
+      if (rest < 0) { if (!has(15)) continue; cells[15] = decCell(-rest); }
+      const cost = Object.values(cells).filter(Boolean).length + (cells[13] ? 10 : 0);
+      if (!best || cost < best.cost) best = { cost, cells };
+    }
+    if (!best) return null;
+    const out = {}; free.forEach(r => out[r] = best.cells[r] || null);
+    return out;
+  }
+  /** Direct-row cells plus a × row multiplier m (1 = none) that best give v (>= 0): the closest value,
+   *  then the fewest cells, avoiding row 13 (kept for cables) and then the × row. */
+  function encodeWide(v, free) {
+    v = Math.max(0, Math.round(v * 10000) / 10000);
+    let best = null;
+    for (let m = 1; m <= 9; m++) {
+      const b = Math.round(v / m * 10000) / 10000, cells = encodeAdd(b, free); if (!cells) continue;
+      const err = Math.round(Math.abs(b * m - v) * 1e6) / 1e6;
+      const cost = Object.values(cells).filter(Boolean).length + (cells[13] ? 10 : 0) + (m > 1 ? 1 : 0);
+      if (!best || err < best.err || (err === best.err && cost < best.cost)) best = { err, cost, m, cells };
+    }
+    return best;
+  }
+  /** Cells to write so the column's constant becomes v. Returns [[row, cell|null], ...] for changed cells only.
+   *  `wide` inputs may also use the × row (when it is empty or holds a constant). */
+  function dialWrites(S, col, v, wide) {
     const free = [14, 15, 13].filter(r => { const c = S.cells.get(EM.key(r, col)); return !c || isConstCode(c.code & 63); });
+    const mc = S.cells.get(EM.key(MUL_ROW, col));
+    if (wide && (!mc || constMul(mc) !== null)) {
+      const enc = encodeWide(v, free);
+      if (enc) {
+        const want = [...free.map(r => [r, enc.cells[r]]), [MUL_ROW, enc.m === 1 ? null : intCell(enc.m)]];
+        return want.filter(([r, w]) => {
+          const cur = S.cells.get(EM.key(r, col));
+          return !((!cur && !w) || (cur && w && (cur.code & 63) === w.code && (cur.dec || 0) === (w.dec || 0) && !(cur.code & 64)));
+        });
+      }
+    }
     const { cells } = encodeDial(v, free);
     // Prefer keeping row 13 for cables (X, W, formulas): only use it when 14 is taken.
     if (free.includes(14) && cells[13] === undefined) cells[13] = null;
@@ -364,7 +416,7 @@
   root.EMModules = {
     OSC_FAMILY, BANKS, BIQSIN_SEL, KINET_SEL, SG_TYPES, MAST_ASSIGN, GROUP_ORDER,
     slotDefs, describeNode, paletteItems, findSlot, bankFromWire,
-    dialValue, encodeDial, dialWrites, dialAvailable, followOn, isDialCell, DIAL_ROWS, FOLLOW_X, FOLLOW_W, MASTER_OSC_TYPES,
+    dialValue, encodeDial, encodeWide, dialWrites, dialAvailable, constMul, followOn, isDialCell, DIAL_ROWS, FOLLOW_X, FOLLOW_W, MASTER_OSC_TYPES,
     bankModeControls, OSC_CASCADE, osmoseLike, jennySource, propToValue, propFromValue,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.EMModules;
