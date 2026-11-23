@@ -512,6 +512,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     const def = DEFS[res.slotId];
     if (res.wire !== undefined && def.typeId) setSetup(def.typeId, res.wire);
     if (it.kind === 'bank') applyBankDefaults(def, it.type);
+    applyInputDefaults(def);
     // Like a new oscillator or bank in the Haken Editor, the main Freq input follows the played pitch (X).
     if ((it.kind === 'osc' && it.type.group === 'Oscillators') || it.kind === 'bank') {
       const fi = MOD.describeNode(def, S).inputs.find(i => i.follow === MOD.FOLLOW_X && /^Freq$|^F1$/.test(i.label));
@@ -1221,6 +1222,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     openDialog('Convolution', b => {
       if (dialect() === 'legacy') { b.append(el('div', { class: 'note', text: 'Older firmware (10.09) stores convolution settings in a different layout that is not decoded yet, so they cannot be edited here. The Master columns Conv 1/2 index and mix still work as normal inputs.' })); return; }
       if (!S.conv.length) b.append(el('div', { class: 'note', text: 'The device has not sent its convolution settings yet. Read the patch from the Osmose first.' }));
+      else if (!S.conv[1] && !S.conv[3]) b.append(el('div', { class: 'note', text: 'Convolution is off: both Mix values are 0. Raise a Mix to hear it.' }));
       const c = S.conv, row = (id, label, desc, max = 127) => sliderRow({ key: 'cv' + id, label, desc, min: 0, max, step: 1, get: () => c[id] ?? 0, set: v => setConvVal(id, v) });
       b.append(el('h3', { text: 'Before the recirculator' }), row(0, 'Index', 'Which response, moving through the four set below (adds to the Conv 1 index column)'), row(1, 'Mix', 'Dry / wet (adds to the Conv 1 mix column)'));
       b.append(el('h3', { text: 'After the recirculator' }), row(2, 'Index', 'Adds to the Conv 2 index column'), row(3, 'Mix', 'Adds to the Conv 2 mix column'));
@@ -1233,6 +1235,23 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
       const cb = el('input', { type: 'checkbox', checked: !!c[28], onchange: e => setConvVal(28, e.target.checked ? 1 : 0) });
       b.append(el('div', { class: 'row', 'data-tip': 'Equal power\nKeeps the level steadier when moving between responses' }, el('label', { text: 'Equal power' }), cb));
     });
+  }
+  /** A new patch's Master section: Global FX and convolution off, levels / EQ / compressor at sensible values.
+   *  force = reset everything (New); otherwise only fill in what is missing (start-up, opened files). */
+  function applyMasterDefaults(s, force) {
+    const D = MODS.MASTER_DEFAULTS;
+    for (const [id, v] of Object.entries(D.setup)) if (force || s.setup[id] === undefined) s.setup[id] = v;
+    for (const [cc, v] of Object.entries(D.globals)) if (force || s.globals[cc] === undefined) s.globals[cc] = v;
+    if (force || !s.conv.length) s.conv = D.conv.slice();
+  }
+  /** Messages that put the Osmose's Master section (global cc and convolution) where the screen shows it.
+   *  withSetup adds the Global FX on/off, its type and compressor/tanh (pushAll sends all setup itself). */
+  function masterFxMsgs(dlt, withSetup) {
+    const out = [];
+    if (withSetup) for (const id of Object.keys(MODS.MASTER_DEFAULTS.setup)) if (S.setup[id] !== undefined) { try { out.push(...EM.Encoder.setSetup(dlt, +id, S.setup[id])); } catch { /* unknown in this dialect */ } }
+    for (const [cc, v] of Object.entries(S.globals || {})) out.push(...EM.Encoder.setGlobal(+cc, v));
+    if (dlt !== 'legacy') S.conv.forEach((v, id) => { if (v !== undefined && v !== null) out.push(...EM.Encoder.setConv(dlt, id, v)); });
+    return out;
   }
   function setConvVal(id, v) {
     try { midiSend(EM.Encoder.setConv(dialect(), id, v)); S.conv[id] = v; } catch (err) { setStatus('Not sent: ' + err.message, 'warn'); }
@@ -1316,7 +1335,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
       // The type list stays within the module's family: a Filter module offers every filter type.
       const fam = (MOD.OSC_FAMILY[cur] || MOD.OSC_FAMILY[0]).group;
       Object.values(MOD.OSC_FAMILY).filter(t => t.group === fam).forEach(t => opts.push({ value: t.value, text: t.name }));
-      a.append(selectRow(fam === 'Filters' ? 'Filter type' : fam === 'Processors' ? 'Processor' : 'Oscillator', opts, cur, v => setSetup(def.typeId, v)));
+      a.append(selectRow(fam === 'Filters' ? 'Filter type' : fam === 'Processors' ? 'Processor' : 'Oscillator', opts, cur, v => { const was = MOD.describeNode(def, S).inputs; setSetup(def.typeId, v); applyInputDefaults(def, was); }));
       const t = n.type;
       const legacy = dialect() === 'legacy';
       const slotName = k => { const d = DEFS['osc' + k]; return placed.has(d.id) ? (MOD.OSC_FAMILY[S.setup[d.typeId] ?? 0]?.name || 'module') : 'empty'; };
@@ -1433,6 +1452,15 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     if (n.inputs.length) { a.append(el('h3', { text: 'Cables in' })); a.append(connList((r, c) => cols.has(c) && !isHiddenCell(r, c, S.cells.get(EM.key(r, c))))); }
     if (n.outputs.length) { a.append(el('h3', { text: 'Cables out' })); a.append(connList(r => rows.has(r))); }
     if (!def.fixed) a.append(el('div', { class: 'row', style: 'margin-top:16px' }, el('button', { class: 'danger', onclick: () => removeModule(n.id), text: 'Remove from patch' })));
+  }
+  /** Inputs with a starting value (filter Cutoff and Width…) get it when the module is added, or when its type
+   *  changes and the dial is still empty or at the previous type's starting value (so a value the user set stays). */
+  function applyInputDefaults(def, was) {
+    for (const inp of MOD.describeNode(def, S).inputs) {
+      if (inp.kind !== 'ctl' || inp.dflt === undefined || !MOD.dialAvailable(S, inp.col)) continue;
+      const cur = MOD.dialValue(S, inp.col), prev = was && was.find(w => w.col === inp.col);
+      if (cur === 0 || (prev && prev.dflt !== undefined && Math.abs(cur - prev.dflt) < 1e-6)) setDial(inp, inp.dflt);
+    }
   }
   /** A newly chosen BiqBank / SineBank / Kinetic gets the firmware's default properties
    *  (BiqBank and SineBank columns 3..7 = sF, B, sB, C, sA), as the Haken Editor does. */
@@ -1752,6 +1780,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     mods = new Map((obj.mods || []).filter(m => m.kind === 'macro' || MODS.GESTURES[m.g]).map(m => [m.id, m]));
     for (const k of ['globals', 'macros', 'graphs', 'conv', 'detune']) if (obj[k]) S[k] = obj[k];
     if (obj.text) S.text = obj.text;
+    applyMasterDefaults(S);
   }
   function importMid(buf, name) {
     const msgs = EM.parseSmf(buf);
@@ -1773,7 +1802,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     // go out too, so the Osmose doesn't keep its previous preset's values behind the screen's back.
     const setup = { 15: 0, 16: 0, 62: 0, ...S.setup };
     for (const [id, v] of Object.entries(setup)) { try { out.push(...EM.Encoder.setSetup(dlt, +id, v)); } catch { /* unknown in this dialect */ } }
-    for (const [cc, v] of Object.entries(S.globals || {})) out.push(...EM.Encoder.setGlobal(+cc, v));
+    out.push(...masterFxMsgs(dlt, false));
     for (const [i, raw] of Object.entries(S.macros || {})) { try { out.push(...EM.Encoder.setMacro(+i, EM.macroToValue(+i, raw))); } catch { /* */ } }
     if (dlt === 'legacy' && S.legacyRaw) for (const ch of [15, 16]) for (const [cc, v] of Object.entries(S.legacyRaw[ch] || {})) out.push([0xB0 | (ch - 1), +cc, v]);
     for (const [n, f] of Object.entries(S.formulas)) {
@@ -1786,7 +1815,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
     step();
   }
   function demoPatch() {
-    S = EM.newState(); makeDecoder();
+    S = EM.newState(); makeDecoder(); applyMasterDefaults(S);
     S.name = 'Demo: simple pressure synth';
     const put = (r, c, label) => S.cells.set(EM.key(r, c), EM.parseCellValue(label));
     S.setup[EM.SETUP.OscType1] = 0;     // Osc 1: DSF oscillator
@@ -1813,7 +1842,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
   $('#dialectSel').value = userDialect;
   $('#dialectSel').addEventListener('change', e => { userDialect = e.target.value; store.set('dialect', userDialect); dec.setDialect(userDialect === 'auto' ? 'auto' : userDialect); renderHeader(); scheduleRender(); });
   $('#demoBtn').addEventListener('click', () => { demoPatch(); renderAll(); fitView(); renderInspector(); });
-  $('#newBtn').addEventListener('click', () => { if (confirm('Clear the patch shown here? (Sends a matrix clear to the device if connected.)')) { S.cells.clear(); S.formulas = {}; mods = new Map(); pendingLetters.clear(); dismissedMacros.clear(); midiSend(EM.Encoder.clearMatrix(dialect())); selected = null; placed = new Set(START); scheduleRender(); } });
+  $('#newBtn').addEventListener('click', () => { if (confirm('Clear the patch shown here? (Sends a matrix clear to the device if connected.)')) { S.cells.clear(); S.formulas = {}; mods = new Map(); pendingLetters.clear(); dismissedMacros.clear(); applyMasterDefaults(S, true); midiSend([...EM.Encoder.clearMatrix(dialect()), ...masterFxMsgs(dialect(), true)]); selected = null; placed = new Set(START); scheduleRender(); } });
   $('#saveBtn').addEventListener('click', async () => {
     try {
       const saved = await saveAs((S.name || 'patch').replace(/[^\w\- ]+/g, '') + '.osmpatch.json', stateToJson());
@@ -1872,6 +1901,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
   document.addEventListener('pointerdown', hideTip, true);
   document.addEventListener('wheel', hideTip, { passive: true, capture: true });
 
+  applyMasterDefaults(S);
   renderAll(); renderInspector(); initMidi();
   window.osmosePatcher = { get state() { return S; }, get placed() { return placed; }, get mods() { return mods; }, get selected() { return selected; }, get capture() { return midi.capture; }, midiSend, connect, disconnectModIn: (id, r) => disconnectModIn(mods.get(id), r), dec: () => dec, dialect }; // for debugging from the console
 })();

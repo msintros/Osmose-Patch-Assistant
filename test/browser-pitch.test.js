@@ -47,12 +47,19 @@ const { chromium } = require('playwright'); const assert = require('assert');
   console.log('LFO sg', sg, 'trigger cell:', JSON.stringify(await cell(13, tcol)));
   assert.strictEqual((await cell(13, tcol)).code, 50);
 
-  // Connect: the screen goes to the Osmose, including Global FX on (setup 15 = 0).
+  // Connect: the screen goes to the Osmose, including Global FX off (setup 15 = 1), the recirculator mix
+  // and convolution off (both convolution Mix values 0, poke stream 26).
   await pg.click('#connectBtn'); await pg.waitForTimeout(1300);
   const sent = await pg.evaluate(() => window.__sent);
-  const i15 = sent.findIndex((m, i) => m[0] === 0xAF && m[1] === 15 && m[2] === 0 && sent[i - 1][1] === 56 && sent[i - 1][2] === 20);
-  console.log('Global FX enable sent on connect:', i15 > 0);
+  const i15 = sent.findIndex((m, i) => m[0] === 0xAF && m[1] === 15 && m[2] === 1 && sent[i - 1][1] === 56 && sent[i - 1][2] === 20);
+  console.log('Global FX off sent on connect:', i15 > 0);
   assert(i15 > 0);
+  const conv = id => sent.find((m, i) => m[0] === 0xAF && m[1] === id && sent[i - 1][0] === 0xBF && sent[i - 1][1] === 56 && sent[i - 1][2] === 26);
+  console.log('convolution mixes sent:', JSON.stringify([conv(1), conv(3)]));
+  assert.deepStrictEqual([conv(1), conv(3)], [[0xAF, 1, 0], [0xAF, 3, 0]]);
+  assert(sent.some(m => m[0] === 0xB0 && m[1] === 24 && m[2] === 50), 'recirculator mix sent');
+  const fxShown = await pg.evaluate(() => window.osmosePatcher.state.setup[15]);
+  assert.strictEqual(fxShown, 1, 'Global FX shows as off');
 
   console.log('errors:', errors); assert.deepStrictEqual(errors, []);
   await b.close(); console.log('pitch browser test OK');

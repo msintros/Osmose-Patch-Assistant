@@ -195,6 +195,23 @@
   const CONV_IRS = ['Waterphone 1', 'Waterphone 2', 'Autoharp 1', 'Autoharp 2', 'Guitar dark', 'Finger snap', 'Wood', 'Metal bright', 'Fiber', 'Leather',
     'Metal damped', 'Nylon', 'Cloth', 'Eowave gong', 'LVDL pyramid', 'LVDL gong', 'LVDL onde', 'White', 'Grey'];
 
-  root.EMMods = { GESTURES, defaults, fresh, macroOf, macroFormula, macroNames, RECIRC_TYPES, RECIRC_DESC, RECIRC_CC, MASTER_KNOBS, CONV_IRS };
+  // What a new patch starts with in the Master section, sent to the Osmose with the patch so the screen and the
+  // instrument agree from the start. Global FX (recirculator) and convolution start OFF, with values ready for
+  // when they are switched on. Values are taken from factory-style presets (Bowed BiqBank).
+  const MASTER_DEFAULTS = {
+    setup: { 15: 1, 16: 0, 62: 0 },   // 15: recirculator disabled; 16: compressor (not tanh); 62: Short reverb
+    globals: {
+      26: 64, 18: 60, 19: 0,                         // Pre, Post, Audio in
+      20: 99, 21: 53, 22: 17, 23: 40, 95: 40, 96: 40, // R1..R6 (Short reverb: diffuse, damping, darkness, decay, pre-delay, high pass)
+      24: 50,                                        // Recirc mix, used once Global FX is switched on
+      83: 64, 84: 64, 85: 0,                         // Tilt EQ flat, EQ mix 0
+      90: 127, 91: 64, 92: 64, 93: 0,                // Compressor, mix 0 (off)
+    },
+    // Convolution (stream 14): both Mix values 0 = off. Responses Metal bright, Guitar dark, Waterphone 2, Wood,
+    // full length, tune unchanged (64), width 64, levels full, equal power off.
+    conv: [0, 0, 0, 0, 7, 4, 1, 6, 127, 127, 127, 127, 64, 64, 64, 64, 64, 64, 64, 64, 127, 127, 127, 127, 127, 127, 127, 127, 0, 0],
+  };
+
+  root.EMMods = { GESTURES, defaults, fresh, macroOf, macroFormula, macroNames, RECIRC_TYPES, RECIRC_DESC, RECIRC_CC, MASTER_KNOBS, CONV_IRS, MASTER_DEFAULTS };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.EMMods;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

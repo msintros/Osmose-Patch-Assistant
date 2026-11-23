@@ -30,7 +30,12 @@ const SHOTS = process.env.SHOTS || '/tmp';
   let n0 = await mark();
   await pg.click('.pitem[data-key="osc:filter"]'); await pg.waitForTimeout(150);
   console.log('add low pass sent:', JSON.stringify(await sentSince(n0)));
-  assert.deepStrictEqual((await sentSince(n0)).slice(-2), [[0xBF, 56, 20], [0xAF, 72, 5]]);
+  const addSent = await sentSince(n0);
+  assert.deepStrictEqual(addSent.slice(0, 2), [[0xBF, 56, 20], [0xAF, 72, 5]]);
+  // A new low pass starts open: Cutoff 9 kHz (column 13), Width 1 (column 14), both on Direct + (2).
+  const startDials = await pg.evaluate(() => { const S = window.osmosePatcher.state; return [S.cells.get(14 * 64 + 13), S.cells.get(14 * 64 + 14)]; });
+  console.log('low pass start dials:', JSON.stringify(startDials));
+  assert.deepStrictEqual(startDials.map(c => c && c.code), [58, 50]);
   const labels = await pg.$$eval('.node[data-node="osc1"] text.plabel', t => t.map(x => x.firstChild.nodeValue));
   console.log('low pass inputs:', labels.join(' | '));
   assert.deepStrictEqual(labels, ['In', 'Cutoff', 'Width']);
@@ -42,11 +47,22 @@ const SHOTS = process.env.SHOTS || '/tmp';
   await pg.mouse.move(kb.x + kb.width / 2, kb.y - 45, { steps: 6 }); await pg.mouse.up(); await pg.waitForTimeout(120);
   const knobSent = await sentSince(n0);
   console.log('knob sent:', JSON.stringify(knobSent));
-  const st = await pg.evaluate(() => { const S = window.osmosePatcher.state; const c = S.cells.get(14 * 64 + 14); return c; });
-  console.log('row 14 col 14 cell:', JSON.stringify(st));
-  assert(st && st.code === 49 && st.dec > 0, 'knob should leave a decimal constant');
+  const st = await pg.evaluate(() => { const S = window.osmosePatcher.state; return [14, 15].map(r => S.cells.get(r * 64 + 14)); });
+  console.log('rows 14/15 col 14 cells:', JSON.stringify(st));
+  assert(st[0] && !(st[0].code === 50 && !st[1]), 'knob should move Width away from its starting 1');
   assert(knobSent.some(m => m[0] === 0xBF && m[1] === 40 && m[2] === 14), 'row 14 selected');
   assert.strictEqual(await pg.locator('.cable path.vis').count(), 0, 'dial values are not drawn as cables');
+  // 3b. Switching the type to High pass moves the untouched Cutoff to 10 Hz and keeps the Width the user set.
+  await pg.click('.node[data-node="osc1"]'); await pg.waitForTimeout(80);
+  const widthBefore = await pg.evaluate(() => window.EMModules.dialValue(window.osmosePatcher.state, 14));
+  await pg.locator('#inspector select').filter({ has: pg.locator('option', { hasText: 'High pass, 1 pole' }) }).first().selectOption('6');
+  await pg.waitForTimeout(120);
+  const afterHp = await pg.evaluate(() => [13, 14].map(c => window.EMModules.dialValue(window.osmosePatcher.state, c)));
+  console.log('after High pass: cutoff, width =', afterHp.join(', '), '(width before', widthBefore + ')');
+  assert.deepStrictEqual(afterHp, [0.01, widthBefore]);
+  await pg.locator('#inspector select').filter({ has: pg.locator('option', { hasText: 'High pass, 1 pole' }) }).first().selectOption('5');
+  await pg.waitForTimeout(120);
+  assert.strictEqual(await pg.evaluate(() => window.EMModules.dialValue(window.osmosePatcher.state, 13)), 9, 'back to Low pass: 9 kHz');
 
   // 4. Fill the 5 Osc/Filter slots, then the strip must refuse a sixth.
   for (const k of ['osc:0', 'osc:filter', 'osc:filter', 'osc:filter']) { await pg.click(`.pitem[data-key="${k}"]`); await pg.waitForTimeout(60); }
