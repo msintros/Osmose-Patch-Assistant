@@ -61,6 +61,17 @@ const { chromium } = require('playwright'); const assert = require('assert');
   const fxShown = await pg.evaluate(() => window.osmosePatcher.state.setup[15]);
   assert.strictEqual(fxShown, 1, 'Global FX shows as off');
 
+  // Clear empties the screen and the Osmose: matrix clear, then every former connection written empty.
+  const before = await pg.evaluate(() => [...window.osmosePatcher.state.cells.keys()]);
+  await pg.evaluate(() => { window.__sent.length = 0; });
+  pg.once('dialog', d => d.accept());
+  await pg.click('#newBtn'); await pg.waitForTimeout(400);
+  const cleared = await pg.evaluate(() => ({ sent: window.__sent, cells: window.osmosePatcher.state.cells.size }));
+  const empties = cleared.sent.filter((m, i) => m[0] === 0xBF && m[1] === 44 && m[2] === 0 && cleared.sent[i - 1][1] === 45 && cleared.sent[i - 1][2] === 115).length;
+  console.log('Clear: matrix clear', JSON.stringify(cleared.sent[0]), 'empty cells sent', empties, 'of', before.length, '; cells left', cleared.cells);
+  assert.deepStrictEqual(cleared.sent[0], [0xBF, 45, 125]);
+  assert(before.length > 0 && empties === before.length && cleared.cells === 0);
+
   console.log('errors:', errors); assert.deepStrictEqual(errors, []);
   await b.close(); console.log('pitch browser test OK');
 })().catch(e => { console.error(e); process.exit(1); });

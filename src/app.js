@@ -1809,10 +1809,26 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
       out.push(...EM.Encoder.formulaChanges(dlt, +n, f.pairs, f.pairs, null, null));
     }
     for (const [k, c] of S.cells) { const [r, col] = EM.unkey(k); try { out.push(...EM.Encoder.setCell(dlt, r, col, c)); } catch (e) { logInfo(e.message); } }
+    sendPaced(out, () => { logInfo('Patch sent.'); if (silent === true) setStatus('The Osmose now plays the patch shown here (its preset is untouched: pick it again on the Osmose to get it back). Read patch brings a preset in.', 'on'); });
+  }
+  /** Send a long list of messages in small bursts so the device's receive queue keeps up. */
+  function sendPaced(out, done) {
     logInfo(`Sending ${out.length} messages…`);
-    // pace the burst a little so the device's receive queue keeps up
-    let i = 0; const step = () => { midiSend(out.slice(i, i + 40)); i += 40; if (i < out.length) setTimeout(step, 15); else { logInfo('Patch sent.'); if (silent === true) setStatus('The Osmose now plays the patch shown here (its preset is untouched: pick it again on the Osmose to get it back). Read patch brings a preset in.', 'on'); } };
+    let i = 0; const step = () => { midiSend(out.slice(i, i + 40)); i += 40; if (i < out.length) setTimeout(step, 15); else if (done) done(); };
     step();
+  }
+  /** Clear: empty the patch here and on the Osmose. Besides the matrix clear, every connection that was on
+   *  screen is written empty one by one (the same message as deleting a cable), and the Master section goes
+   *  back to its defaults, so the instrument is silent and matches the screen even if it ignores the clear. */
+  function clearPatch() {
+    const was = [...S.cells.keys()].map(k => EM.unkey(k));
+    S.cells.clear(); S.formulas = {}; mods = new Map(); pendingLetters.clear(); dismissedMacros.clear(); applyMasterDefaults(S, true);
+    selected = null; placed = new Set(START); scheduleRender();
+    if (!midi.out) return;
+    const dlt = dialect(), out = [...EM.Encoder.clearMatrix(dlt)];
+    for (const [r, c] of was) { try { out.push(...EM.Encoder.setCell(dlt, r, c, null)); } catch { /* */ } }
+    out.push(...masterFxMsgs(dlt, true));
+    sendPaced(out, () => { logInfo('Patch cleared on the Osmose.'); setStatus('Cleared here and on the Osmose (nothing is stored to a preset).', 'on'); });
   }
   function demoPatch() {
     S = EM.newState(); makeDecoder(); applyMasterDefaults(S);
@@ -1842,7 +1858,7 @@ ${it.desc || ''}${res.error ? '\nNot available: ' + res.error : ''}`, 'data-key'
   $('#dialectSel').value = userDialect;
   $('#dialectSel').addEventListener('change', e => { userDialect = e.target.value; store.set('dialect', userDialect); dec.setDialect(userDialect === 'auto' ? 'auto' : userDialect); renderHeader(); scheduleRender(); });
   $('#demoBtn').addEventListener('click', () => { demoPatch(); renderAll(); fitView(); renderInspector(); });
-  $('#newBtn').addEventListener('click', () => { if (confirm('Clear the patch shown here? (Sends a matrix clear to the device if connected.)')) { S.cells.clear(); S.formulas = {}; mods = new Map(); pendingLetters.clear(); dismissedMacros.clear(); applyMasterDefaults(S, true); midiSend([...EM.Encoder.clearMatrix(dialect()), ...masterFxMsgs(dialect(), true)]); selected = null; placed = new Set(START); scheduleRender(); } });
+  $('#newBtn').addEventListener('click', () => { if (confirm('Clear the patch shown here' + (midi.out ? ' and on the Osmose? (Nothing is stored to a preset slot.)' : '?'))) clearPatch(); });
   $('#saveBtn').addEventListener('click', async () => {
     try {
       const saved = await saveAs((S.name || 'patch').replace(/[^\w\- ]+/g, '') + '.osmpatch.json', stateToJson());

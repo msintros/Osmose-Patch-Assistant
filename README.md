@@ -51,7 +51,7 @@ preset `.mid` file with **Open…**.
   cable label to set the amount. Macros named in the preset text appear with their names.
 - **Master**: its panel has levels, compressor / tanh and tilt EQ. The Global FX (recirculator) and Convolution
   buttons on the module open those windows. A new patch starts with Global FX switched off (Short reverb, ready
-  for when it is enabled) and convolution off (both Mix values 0); Connect and New send these to the Osmose, so
+  for when it is enabled) and convolution off (both Mix values 0); Connect and Clear send these to the Osmose, so
   the screen and the instrument match from the start.
 - A new **Filter** starts audible: Width 1 (minimum 0.01), Cutoff 9 kHz for low passes (ladder too, with
   Resonance 0.7), 10 Hz for high passes and 1 kHz for the others. Changing the filter type moves a Cutoff
