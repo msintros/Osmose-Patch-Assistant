@@ -276,6 +276,7 @@
       graphs: { 2: [], 3: [], 4: [] },  // BiqGraph graphs: 2 = mode amplitudes, 3 / 4 = offset graphs (48 values 0..96)
       conv: [],              // convolution settings (stream 14)
       detune: {},            // app only: per-column detune (kHz) included in the column's dial constant
+      quant: {},             // app only: columns whose dial snaps to integers (Jenny Fx)
       globals: {},           // Master section and other global cc (pre, post, recirculator, EQ, compressor) by cc number
       macros: {},            // macro index 0..89 (i = 0) -> 14-bit raw value
     };

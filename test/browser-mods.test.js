@@ -146,6 +146,23 @@ const SHOTS = process.env.SHOTS || '/tmp';
   const after8c = await colsOf(); console.log('osc cols with cells after:', JSON.stringify(after8c));
   assert(!after8c.includes(21) && after8c.includes(15));
   assert.match(await pg.textContent('.node[data-node="osc3"] text.sub'), /phase from slot 2/);
+  // Jenny inputs are Bx, Fx, S (columns 1..3 of its slot, now slot 3 = columns 18..20), Bx and Fx start at 1.
+  const ctlLabels = await pg.$$eval('#inspector .ctl label', ls => ls.map(l => l.textContent));
+  assert.deepStrictEqual(ctlLabels, ['Bx', 'Fx', 'S']);
+  const wv = c => pg.evaluate(c => window.EMModules.dialValue(window.osmosePatcher.state, c, true), c);
+  assert.deepStrictEqual([await wv(18), await wv(19), await wv(20)], [1, 1, 0]);
+  // Fx 50 needs the × row; with "integers only" 12.4 becomes 12.
+  const fxNum = pg.locator('#inspector input[data-dial="19"]');
+  await fxNum.fill('50'); await fxNum.dispatchEvent('change'); await pg.waitForTimeout(80);
+  assert.strictEqual(await wv(19), 50);
+  assert(await pg.evaluate(() => !!window.osmosePatcher.state.cells.get(16 * 64 + 19)), 'Fx 50 uses the × row');
+  assert.strictEqual(await pg.locator('.chip text', { hasText: /^× / }).count(), 0, 'the multiplier is not drawn as a cable');
+  await pg.check('#inspector input[data-quant="19"]'); await pg.waitForTimeout(80);
+  await fxNum.fill('12.4'); await fxNum.dispatchEvent('change'); await pg.waitForTimeout(80);
+  assert.strictEqual(await wv(19), 12);
+  const bxNum = pg.locator('#inspector input[data-dial="18"]');
+  await bxNum.fill('12.7'); await bxNum.dispatchEvent('change'); await pg.waitForTimeout(80);
+  assert.strictEqual(await wv(18), 12.7);
   await pg.screenshot({ path: SHOTS + '/r6-jenny.png' });
   // A new DSF oscillator follows pitch (X on Direct + into its Freq); Key tracking into Freq does the same.
   const fx = await pg.evaluate(() => window.osmosePatcher.state.cells.get(13 * 64 + 22));
